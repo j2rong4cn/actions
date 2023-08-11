@@ -1,0 +1,33 @@
+name: 天翼云盘自动签到
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 30 2 * * *
+jobs:
+  Cloud189Checkin:
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout wes-lin/Cloud189Checkin@main
+      uses: actions/checkout@v3
+      with:
+        repository: wes-lin/Cloud189Checkin
+        ref: main
+    - uses: actions/setup-node@v3
+      with:
+        node-version: 14
+    - name: init
+      run: |
+        cd $GITHUB_WORKSPACE
+        npm install
+    - name: run
+      uses: nick-fields/retry@v2
+      env:
+        TY_USER_NAME: ${{secrets.TY_USER_NAME}}
+        TY_PASSWORD: ${{secrets.TY_PASSWORD}}
+        SENDKEY: ${{secrets.SENDKEY}}
+      with:
+        timeout_minutes: 10
+        max_attempts: 5
+        command: |
+          cd $GITHUB_WORKSPACE
+          npm start
