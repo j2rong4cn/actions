@@ -1,0 +1,2 @@
+- [阿里云云自动签到](https://github.com/ImYrS/aliyun-auto-signin)
+- [天翼云盘自动签到](https://github.com/wes-lin/Cloud189Checkin)
