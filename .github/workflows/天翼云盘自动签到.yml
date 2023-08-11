@@ -4,11 +4,11 @@ on:
   schedule:
     - cron: 30 2 * * *
 jobs:
-  Cloud189Checkin:
+  sigin:
+    name: 天翼云盘自动签到
     runs-on: ubuntu-latest
     steps:
-    - name: checkout wes-lin/Cloud189Checkin@main
-      uses: actions/checkout@v3
+    - uses: actions/checkout@v3
       with:
         repository: wes-lin/Cloud189Checkin
         ref: main
@@ -24,7 +24,7 @@ jobs:
       env:
         TY_USER_NAME: ${{secrets.TY_USER_NAME}}
         TY_PASSWORD: ${{secrets.TY_PASSWORD}}
-        SENDKEY: ${{secrets.SENDKEY}}
+        SENDKEY: ${{secrets.SERVERCHAN_SEND_KEY}}
       with:
         timeout_minutes: 10
         max_attempts: 5
