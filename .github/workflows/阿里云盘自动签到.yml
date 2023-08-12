@@ -1,11 +1,11 @@
-name: 阿里云盘自动签到
+name: 阿里云盘签到
 on:
   schedule:
     - cron: '40 2 * * *'
   workflow_dispatch:
 jobs:
   signin:
-    name: 阿里云盘自动签到
+    name: 阿里云盘签到
     runs-on: ubuntu-latest
     steps:
       - uses: ImYrS/aliyun-auto-signin@main
