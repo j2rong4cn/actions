@@ -16,9 +16,7 @@ jobs:
         repository: wes-lin/Cloud189Checkin
         ref: main
     - name: init
-      run: |
-        cd $GITHUB_WORKSPACE
-        npm install
+      run: npm install
     - name: run
       uses: nick-fields/retry@v2
       env:
@@ -29,6 +27,4 @@ jobs:
       with:
         timeout_minutes: 10
         max_attempts: 3
-        command: |
-          cd $GITHUB_WORKSPACE
-          npm start
+        command: npm start
