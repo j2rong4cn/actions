@@ -8,13 +8,13 @@ jobs:
     name: 天翼云盘签到
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-      with:
-        repository: j2rong4cn/Cloud189Checkin
-        ref: main
     - uses: actions/setup-node@v3
       with:
         node-version: 14
+    - uses: actions/checkout@v3
+      with:
+        repository: wes-lin/Cloud189Checkin
+        ref: main
     - name: init
       run: |
         cd $GITHUB_WORKSPACE
@@ -24,12 +24,11 @@ jobs:
       env:
         TY_USER_NAME: ${{secrets.TY_USER_NAME}}
         TY_PASSWORD: ${{secrets.TY_PASSWORD}}
-        SENDKEY: ${{secrets.SERVERCHAN_SEND_KEY}}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       with:
-        timeout_minutes: 30
-        max_attempts: 5
+        timeout_minutes: 10
+        max_attempts: 3
         command: |
           cd $GITHUB_WORKSPACE
           npm start
