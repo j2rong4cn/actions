@@ -1,0 +1,36 @@
+name: 编译GitLens
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+            node-version: 20
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+            version: 8
+      - name: Build
+        run: |
+          set -e
+          version=$(curl -L https://api.github.com/repos/gitkraken/vscode-gitlens/releases/latest | jq -r .tag_name)
+          echo version=$version | tee -a $GITHUB_ENV
+          git clone --depth=1 -b $version https://github.com/gitkraken/vscode-gitlens.git source
+          cd source
+          rm -rf .git
+          git apply ${{ github.workspace }}/patches/GitLens.patch
+          pnpm install
+          pnpm run package
+          mv *.vsix ..
+      - name: Upload files
+        uses: actions/upload-artifact@v4
+        with:
+          name: GitLens-${{ env.version }}
+          path: |
+            *.vsix

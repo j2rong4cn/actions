@@ -1,0 +1,211 @@
+name: Build KernelSU for dipper
+env:
+  arch: arm64
+  kernel_repository: j2rong4cn/android_kernel_xiaomi_sdm845
+  kernel_branch: a14
+  kernel_patch: |
+    allow-init-exec-ksud-under-nosuid.patch
+    support-umount-modules-kernel.patch
+  defconfig: vendor/xiaomi/mi845_defconfig vendor/xiaomi/dipper.config
+  extra_config: |
+    CONFIG_TCP_CONG_HTCP=n
+    CONFIG_TCP_CONG_BIC=n
+
+    CONFIG_TCP_CONG_ADVANCED=y
+    CONFIG_TCP_CONG_CUBIC=y
+    CONFIG_TCP_CONG_BBR=y
+    CONFIG_TCP_CONG_WESTWOOD=y
+    CONFIG_DEFAULT_WESTWOOD=y
+
+    CONFIG_LOCALVERSION="-K"
+    #KernelSU
+    CONFIG_KPROBES=y
+    CONFIG_HAVE_KPROBES=y
+    CONFIG_KPROBE_EVENTS=y
+
+on:
+  workflow_dispatch:
+    inputs:
+      boot_source_img:
+        description: "boot source img"
+        type: string
+        default: "static/boot-source.dipper.img"
+      kernelsu_version:
+        description: "KernelSU Version"
+        type: string
+        default: "v0.9.3"
+
+jobs:
+  build:
+    name: "KernelSU Version: ${{ inputs.kernelsu_version }}"
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+
+    steps:
+    - name: Setup swap
+      uses: pierotofy/set-swap-space@v1.0
+      with:
+        swap-size-gb: 10
+
+    - name: Download Kernel source
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ env.kernel_repository }}
+        ref: ${{ env.kernel_branch }}
+
+    - name: Setup KernelSU
+      run: |
+        rm -rf KernelSU
+        rm -rf drivers/kernelsu
+        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s '${{ inputs.kernelsu_version }}'
+
+    - name: Retrieve information
+      run: |
+        sudo apt update
+        sudo timedatectl set-timezone Asia/Shanghai && date
+        echo build_version=$(date "+%y%m%d_%H%M")-$(git rev-parse HEAD | head -c 7) | tee -a $GITHUB_ENV
+        echo ccache_key=$(basename ${GITHUB_WORKFLOW_REF%@*})-${{ env.kernel_branch }} | tee -a $GITHUB_ENV
+        [ -z "${{ inputs.boot_source_img }}" ] || echo 'boot_source_img="${{ inputs.boot_source_img }}"' | tee -a $GITHUB_ENV
+
+    - name: Checkout this repo
+      uses: actions/checkout@v4
+      with:
+        path: this-repo
+
+    - name: Apply kernel patch
+      run: |
+        while read -r line; do
+            if [ -z "$line" ] || [[ "$line" == "#"* ]]; then
+                continue
+            fi
+            echo "Applying kernel patch: $line"
+            git apply "this-repo/patches/$line"
+        done <<<"$kernel_patch"
+
+    - name: Apply KernelSU patch
+      run: |
+        while read -r line; do
+            if [ -z "$line" ] || [[ "$line" == "#"* ]]; then
+                continue
+            fi
+            echo "Applying KernelSU patch: $line"
+            git apply -p2 --directory KernelSU/kernel "this-repo/patches/$line"
+        done <<<"$kernelsu_patch"
+
+    - name: Setup ccache
+      uses: hendrikmuhs/ccache-action@v1.2.12
+      with:
+        key: ${{ env.ccache_key }}
+        max-size: 2G
+
+    - name: Restore toolchains from cache
+      uses: actions/cache/restore@v4
+      with:
+        path: toolchains
+        key: toolchains
+
+    - name: Check & Download Clang-aosp
+      run: |
+        [ -d toolchains/bin ] || (
+          mkdir -p toolchains
+          wget -qO - https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main-kernel-build-2023/clang-r487747c.tar.gz | tar -zxvC toolchains
+          [ -d toolchains/bin ] && echo toolchains_is_save=true | tee -a $GITHUB_ENV
+        )
+        [ $? -eq 0 ] && echo ${{ github.workspace }}/toolchains/bin | tee -a $GITHUB_PATH
+
+    - name: Check & Download Gcc-aosp
+      run: |
+        [ -d toolchains/gcc-64 ] || (
+          mkdir -p toolchains/gcc-64
+          wget -qO - https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz | tar -zxvC toolchains/gcc-64
+          [ -d toolchains/gcc-64/bin ] && echo toolchains_is_save=true | tee -a $GITHUB_ENV
+        )
+        [ $? -eq 0 ] && echo "GCC_64=CROSS_COMPILE=${{ github.workspace }}/toolchains/gcc-64/bin/aarch64-linux-android-" | tee -a $GITHUB_ENV
+
+        [ -d toolchains/gcc-32 ] || (
+          mkdir -p toolchains/gcc-32
+          wget -qO - https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz | tar -zxvC toolchains/gcc-32
+          [ -d toolchains/gcc-32/bin ] && echo toolchains_is_save=true | tee -a $GITHUB_ENV
+        )
+        [ $? -eq 0 ] && echo "GCC_32=CROSS_COMPILE_ARM32=${{ github.workspace }}/toolchains/gcc-32/bin/arm-linux-androideabi-" | tee -a $GITHUB_ENV
+
+    - name: Save toolchains to cache
+      if: ${{ env.toolchains_is_save == 'true' && !cancelled() }}
+      continue-on-error: true
+      uses: actions/cache/save@v4
+      with:
+        path: toolchains
+        key: toolchains
+
+    - name: Build kernel
+      env:
+        CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+        CCACHE_NOHASHDIR: "true"
+        CCACHE_HARDLINK: "true"
+      run: |
+        export KBUILD_BUILD_HOST=Github-Action
+        export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
+
+        echo "$extra_config" | tee arch/${{ env.arch }}/configs/extra.config
+
+        make O=out ARCH=${{ env.arch }} ${{ env.defconfig }} extra.config && \
+        make O=out ARCH=${{ env.arch }} -j $(nproc --all) CC="ccache clang" \
+          ${{ env.GCC_64 }} ${{ env.GCC_32 }} \
+          LLVM=1 LLVM_IAS=1 CLANG_TRIPLE=aarch64-linux-gnu-
+
+    - name: Check output files
+      run: |
+        ls out/arch/${{ env.arch }}/boot/Image.gz-dtb && {
+          mkdir outputs
+          cp out/arch/${{ env.arch }}/boot/Image.gz-dtb outputs/
+          cp .config outputs/ 2>/dev/null || cp out/.config outputs/ 2>/dev/null || echo "Cannot find .config"
+          echo file_is_ok=true | tee -a $GITHUB_ENV
+          find out -type f -name '*.ko' | while read f; do
+            cp $f outputs/
+          done
+        }
+
+    - name: Build boot image
+      if: env.file_is_ok == 'true' && env.boot_source_img != ''
+      run: |
+
+        if [[ "${{ env.boot_source_img }}" = "http"* ]]; then
+          wget -qO boot-source.img "${{ env.boot_source_img }}"
+        else
+           mv "this-repo/${{ env.boot_source_img }}" boot-source.img
+        fi
+
+        if [[ $? -eq 0 && -f boot-source.img ]]; then
+          git clone --recursive --depth=1 -j $(nproc --all) https://android.googlesource.com/platform/system/tools/mkbootimg mkbootimg_tools -b main-kernel-build-2023 && {
+            FORMAT_MKBOOTING=$(mkbootimg_tools/unpack_bootimg.py --boot_img boot-source.img --format mkbootimg --out img_out) && \
+              mkbootimg_tools/unpack_bootimg.py --boot_img boot-source.img --out img_out && {
+                cp outputs/Image.gz-dtb img_out/kernel && eval mkbootimg_tools/mkbootimg.py $FORMAT_MKBOOTING -o outputs/boot.img
+                rm img_out/kernel && touch img_out/kernel && eval mkbootimg_tools/mkbootimg.py $FORMAT_MKBOOTING -o outputs/boot-source.img
+              }
+          }
+        fi
+
+    - name: Upload output files
+      if: env.file_is_ok == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        include-hidden-files: true
+        name: dipper-kernelsu-${{ env.kernel_branch }}-${{ env.build_version }}
+        path: |
+          outputs/
+
+    - name: Delete old cache
+      if: false
+      env:
+        GH_TOKEN: ${{ github.token }}
+      continue-on-error: true
+      run: |
+        gh extension install actions/gh-actions-cache
+        cacheKeysForPR=$(gh actions-cache list -L 100 -R ${{ github.repository }} | cut -f 1)
+        if [ -n "$cacheKeysForPR" ]; then
+          for cacheKey in $cacheKeysForPR; do
+            [[ "$cacheKey" = "ccache-${{ env.ccache_key }}"* ]] || gh actions-cache delete $cacheKey -R ${{ github.repository }} --confirm
+          done
+        fi
+
