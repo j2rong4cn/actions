@@ -1,6 +1,6 @@
---- a/src/plus/gk/account/subscription.ts
-+++ b/src/plus/gk/account/subscription.ts
-@@ -125,7 +125,7 @@ export function computeSubscriptionState(subscription: Optional<Subscription, 's
+--- a/src/plus/gk/utils/subscription.utils.ts
++++ b/src/plus/gk/utils/subscription.utils.ts
+@@ -99,7 +99,7 @@ export function computeSubscriptionState(subscription: Optional<Subscription, 's
  			return SubscriptionState.Paid;
  	}
  }
@@ -9,7 +9,7 @@
  export function getSubscriptionPlan(
  	id: SubscriptionPlanId,
  	bundle: boolean,
-@@ -137,7 +137,10 @@ export function getSubscriptionPlan(
+@@ -111,7 +111,10 @@ export function getSubscriptionPlan(
  	nextTrialOptInDate?: string,
  ): SubscriptionPlan {
  	return {
@@ -21,7 +21,7 @@
  		name: getSubscriptionPlanName(id),
  		bundle: bundle,
  		cancelled: cancelled,
-@@ -201,6 +204,7 @@ export function isSubscriptionPaidPlan(id: SubscriptionPlanId): id is PaidSubscr
+@@ -178,6 +181,7 @@ export function isSubscriptionPaidPlan(id: SubscriptionPlanId): id is PaidSubscr
  }
  
  export function isSubscriptionExpired(subscription: Optional<Subscription, 'state'>): boolean {
